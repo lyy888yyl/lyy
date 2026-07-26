@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="no-referrer" />
+  <title>AI智能菜谱平台</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            beige: '#F8F3E6',
+            sage: '#87A884',
+            sageDark: '#6b8c68',
+            textMain: '#443E38'
+          },
+          fontFamily: {
+            sans: ['system-ui', 'PingFang SC', 'Microsoft YaHei']
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background-color: #F8F3E6; color: #443E38; }
+    .sage-gradient { background: linear-gradient(135deg, #87A884, #6b8c68); }
+    .card-shadow { box-shadow: 0 4px 12px rgba(135, 168, 132, 0.15); }
+    .recipe-img { aspect-ratio: 16/10; object-fit: cover; }
+    #detailModal { z-index: 9999 !important; }
+    .loading-spin { animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body class="min-h-screen">
+  <nav class="sticky top-0 z-50 bg-white/90 backdrop-blur card-shadow px-4 md:px-8 py-3">
+    <div class="max-w-7xl mx-auto flex items-center justify-between">
+      <h1 class="text-xl md:text-2xl font-bold text-sage flex items-center gap-2">
+        <i class="fa fa-cutlery"></i> AI智能菜谱库
+      </h1>
+      <div class="flex gap-4 md:gap-6 text-sm md:text-base">
+        <button onclick="switchTab('home')" class="nav-btn py-1 border-b-2 border-transparent hover:text-sage">菜谱首页</button>
+        <button onclick="switchTab('collect')" class="nav-btn py-1 border-b-2 border-transparent hover:text-sage">我的收藏</button>
+        <button onclick="switchTab('cart')" class="nav-btn py-1 border-b-2 border-transparent hover:text-sage relative">
+          点菜车
+          <span id="cartBadge" class="absolute -top-1 -right-3 bg-red-400 text-white text-xs w-4 h-4 rounded-full flex items-center justify-center hidden">0</span>
+        </button>
+        <button onclick="switchTab('buyList')" class="nav-btn py-1 border-b-2 border-transparent hover:text-sage">采购清单</button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="max-w-7xl mx-auto p-4 md:p-6 py-8">
+    <section id="homeTab" class="tab-content">
+      <div class="bg-white rounded-xl p-4 md:p-6 card-shadow mb-8">
+        <div class="flex flex-col md:flex-row gap-4 items-center justify-between mb-4">
+          <div class="w-full md:w-1/2 relative flex gap-2 flex-wrap">
+            <i class="fa fa-search absolute left-3 top-3 text-gray-400"></i>
+            <input type="text" id="searchInput" placeholder="本地菜谱检索 / AI生成任意菜品做法" class="flex-1 pl-9 pr-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:border-sage">
+            <button onclick="localSearch()" class="sage-gradient text-white px-3 rounded">本地检索</button>
+            <button onclick="aiGenerateRecipe()" class="bg-orange-500 text-white px-3 rounded flex items-center gap-1">
+              <i class="fa fa-robot"></i> AI生成菜谱
+            </button>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="setCategory('all')" class="cate-btn px-4 py-1 rounded-full sage-gradient text-white text-sm">全部</button>
+            <button onclick="setCategory('肉类')" class="cate-btn px-4 py-1 rounded-full bg-gray-100 text-sm hover:bg-sage/20">肉类</button>
+            <button onclick="setCategory('素菜')" class="cate-btn px-4 py-1 rounded-full bg-gray-100 text-sm hover:bg-sage/20">素菜</button>
+            <button onclick="setCategory('汤品')" class="cate-btn px-4 py-1 rounded-full bg-gray-100 text-sm hover:bg-sage/20">汤品</button>
+          </div>
+        </div>
+        <div id="aiLoadingTip" class="text-orange-500 hidden my-2">
+          <i class="fa fa-circle-o-notch loading-spin inline-block"></i> AI正在生成菜谱，请稍等片刻...
+        </div>
+      </div>
+      <div id="recipeList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"></div>
+    </section>
+
+    <section id="collectTab" class="tab-content hidden">
+      <h2 class="text-xl font-semibold mb-6 border-l-4 border-sage pl-3">❤️ 收藏菜谱</h2>
+      <div id="collectList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div class="col-span-full text-center py-20 text-gray-400">暂无收藏的菜品</div>
+      </div>
+    </section>
+
+    <section id="cartTab" class="tab-content hidden">
+      <h2 class="text-xl font-semibold mb-6 border-l-4 border-sage pl-3">🛒 已点菜品</h2>
+      <div id="cartList" class="space-y-4">
+        <div class="text-center py-20 text-gray-400">购物车空空如也，快去挑选菜品吧</div>
+      </div>
+      <div class="mt-6 flex justify-end">
+        <button onclick="switchTab('buyList')" class="sage-gradient text-white px-6 py-2 rounded-lg">生成采购清单</button>
+      </div>
+    </section>
+
+    <section id="buyListTab" class="tab-content hidden">
+      <div class="flex justify-between items-center mb-6">
+        <h2 class="text-xl font-semibold border-l-4 border-sage pl-3">📋 食材采购清单</h2>
+        <div class="flex gap-3">
+          <button onclick="copyBuyList()" class="bg-sage text-white px-4 py-2 rounded-lg text-sm"><i class="fa fa-copy mr-1"></i>复制清单</button>
+          <button onclick="clearCart()" class="bg-red-300 text-white px-4 py-2 rounded-lg text-sm">清空购物车</button>
+        </div>
+      </div>
+      <div id="buyTotalProgress" class="mb-6 bg-white rounded-lg p-4 card-shadow">
+        <p class="text-sm mb-2">采购完成进度：<span id="progressNum">0%</span></p>
+        <div class="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
+          <div id="progressBar" class="h-full bg-sage w-0 transition-all"></div>
+        </div>
+      </div>
+      <div id="buyListBox" class="grid md:grid-cols-3 gap-6">
+        <div class="text-center py-20 text-gray-400 col-span-3">选购菜品后自动生成食材清单</div>
+      </div>
+      <textarea id="copyText" class="hidden"></textarea>
+    </section>
+  </main>
+
+  <!-- 菜品弹窗 -->
+  <div id="detailModal" class="fixed inset-0 bg-black/50 z-[9999] hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto card-shadow">
+      <div class="relative">
+        <img id="modalImg" src="" class="w-full h-64 recipe-img rounded-t-xl bg-gray-200">
+        <button onclick="closeModal()" class="absolute top-3 right-3 w-8 h-8 bg-white/70 rounded-full flex items-center justify-center"><i class="fa fa-times"></i></button>
+      </div>
+      <div class="p-6">
+        <div class="flex justify-between items-start mb-4">
+          <div>
+            <h3 id="modalName" class="text-2xl font-bold"></h3>
+            <span id="modalCate" class="inline-block mt-1 px-2 py-0.5 bg-sage/10 text-sage rounded text-sm"></span>
+          </div>
+          <button id="collectBtn" onclick="toggleCollect()" class="text-xl text-gray-300 hover:text-red-400"><i class="fa fa-heart-o"></i></button>
+        </div>
+        <div class="grid md:grid-cols-2 gap-6 my-6">
+          <div>
+            <h4 class="font-semibold text-lg mb-3 flex items-center gap-2"><i class="fa fa-list-ul text-sage"></i>所需食材</h4>
+            <ul id="modalFood" class="space-y-2 text-sm"></ul>
+          </div>
+          <div>
+            <h4 class="font-semibold text-lg mb-3 flex items-center gap-2"><i class="fa fa-fire text-sage"></i>详细烹饪步骤</h4>
+            <ol id="modalStep" class="space-y-3 text-sm list-decimal pl-4"></ol>
+          </div>
+        </div>
+        <div class="flex gap-4">
+          <button onclick="addCart()" class="sage-gradient text-white px-5 py-2 rounded-lg flex-1">加入点菜车</button>
+          <button onclick="closeModal()" class="border border-sage text-sage px-5 py-2 rounded-lg flex-1">关闭</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ==================== 1、本地内置12道固定菜谱（图文一一对应） ====================
+    const localData = [
+      {
+        id:1,name:"红烧肉",cate:"肉类",
+        img:"https://p3-flow-image-sign.byteimg.com/tos-cn-i-a9rns2rl98/39012093929b440892f310d3d2223111~tplv-a9rns2rl98-image.image",
+        food:[{name:"五花肉",num:"500g",type:"肉类"},{name:"冰糖",num:"20g",type:"调料"},{name:"生抽",num:"2勺",type:"调料"},{name:"葱姜",num:"适量",type:"蔬菜"}],
+        step:["五花肉切块冷水下锅焯水捞出洗净","锅中少油放入冰糖炒出枣红色糖色","下入肉块翻炒均匀上色，加葱姜爆香","倒入生抽、开水没过肉块，小火炖煮40分钟","大火收汁浓稠即可出锅"]
+      },
+      {
+        id:2,name:"番茄炒蛋",cate:"素菜",
+        img:"https://p3-flow-image-sign.byteimg.com/tos-cn-i-a9rns2rl98/01827989f89e49889772d788d00f0780~tplv-a9rns2rl98-image.image",
+        food:[{name:"番茄",num:"2个",type:"蔬菜"},{name:"鸡蛋",num:"3个",type:"肉类"},{name:"盐",num:"少许",type:"调料"},{name:"白糖",num:"半勺",type:"调料"}],
+        step:["鸡蛋加少许盐打散，热油炒熟盛出备用","番茄切块下锅翻炒至出沙","倒入鸡蛋混合翻炒，调味即可"]
+      },
+      {
+        id:3,name:"清炒西兰花",cate:"素菜",
+        img:"https://p3-flow-image-sign.byteimg.com/tos-cn-i-a9rns2rl98/88d48702448e4448900d221140117f48~tplv-a9rns2rl98-image.image",
+        food:[{name:"西兰花",num:"1颗",type:"蔬菜"},{name:"大蒜",num:"3瓣",type:"蔬菜"},{name:"盐、蚝油",num:"适量",type:"调料"}],
+        step:["西兰花切小朵盐水浸泡洗净，沸水焯30秒捞出","热油爆香蒜末，下入西兰花大火快炒","放少许蚝油、盐翻炒均匀出锅"]
+      },
+      {
+        id:4,name:"冬瓜排骨汤",cate:"汤品",
+        img:"https://p3-flow-image-sign.byteimg.com/tos-cn-i-a9rns2rl98/9d7408c21365404888128f9d73220403~tplv-a9rns2rl98-image.image",
+        food:[{name:"排骨",num:"400g",type:"肉类"},{name:"冬瓜",num:"300g",type:"蔬菜"},{name:"姜片",num:"3片",type:"蔬菜"},{name:"盐",num:"少许",type:"调料"}],
+        step:["排骨焯水去除血沫冲洗干净","排骨+姜片加水大火烧开转小火炖50分钟","冬瓜去皮切块放入汤中继续炖煮15分钟","出锅前加盐调味"]
+      },
+      {
+        id:5,name:"鱼香肉丝",cate:"肉类",
+        img:"https://p3-flow-image-sign.byteimg.com/tos-cn-i-a9rns2rl98/2546f966f48449088ac1777820446969~tplv-a9rns2rl98-image.image",
+        food:[{name:"里脊肉",num:"300g",type:"肉类"},{name:"木耳胡萝卜笋丝",num:"各适量",type:"蔬菜"},{name:"豆瓣酱、糖醋生抽",num:"配比调味",type:"调料"}],
+        step:["肉丝腌制10分钟滑炒断生盛出","爆香豆瓣酱，下入配菜翻炒至断生","倒回肉丝，淋入鱼香料汁翻炒收汁"]
+      },
+      {
+        id:6,name:"蒜蓉油麦菜",cate:"素菜",
+        img:"https://p3-flow-image-sign.byteimg.com/tos-cn-i-a9rns2rl98/724c7224f8244748817008d30d401089~tplv-a9rns2rl98-image.image",
+        food:[{name:"油麦菜",num:"2颗",type:"蔬菜"},{name:"蒜末",num:"大量",type:"蔬菜"},{name:"盐、鸡精",num:"少许",type:"调料"}],
+        step:["油麦菜洗净沥干水分","热油爆香蒜末，全程大火下入油麦菜快速翻炒","微微变软立刻调味关火"]
+      },
+      {
+        id:7,name:"可乐鸡翅",cate:"肉类",
+        img:"https://p3-flow-image-sign.byteimg.com/tos-cn-i-a9rns2rl98/402004c01757420884d67f4902194c02~tplv-a9rns2rl98-image.image",
+        food:[{name:"鸡翅中",num:"8个",type:"肉类"},{name:"可乐",num:"300ml",type:"调料"},{name:"生抽姜片",num:"适量",type:"调料"}],
+        step:["鸡翅两面划刀焯水沥干","少油煎至两面微黄，放姜片生抽","倒入可乐没过鸡翅，小火焖煮15分钟","大火收干汤汁"]
+      },
+      {
+        id:8,name:"紫菜蛋花汤",cate:"汤品",
+        img:"https://p3-flow-image-sign.byteimg.com/tos-cn-i-a9rns2rl98/1640e8d2384b44988d44d420c8134085~tplv-a9rns2rl98-image.image",
+        food:[{name:"紫菜",num:"1片",type:"蔬菜"},{name:"鸡蛋",num:"2个",type:"肉类"},{name:"葱花、香油",num:"少许",type:"调料"}],
+        step:["清水烧开放入紫菜煮1分钟","蛋液转圈淋入锅中形成蛋花","加盐、葱花，滴几滴香油即可"]
+      },
+      {
+        id:9,name:"麻婆豆腐",cate:"素菜",
+        img:"https://p3-flow-image-sign.byteimg.com/tos-cn-i-a9rns2rl98/28d42608027b44418d488d1664429938~tplv-a9rns2rl98-image.image",
+        food:[{name:"嫩豆腐",num:"1盒",type:"蔬菜"},{name:"牛肉末",num:"80g",type:"肉类"},{name:"豆瓣酱、花椒粉",num:"适量",type:"调料"}],
+        step:["豆腐切小块盐水焯烫去豆腥","炒香牛肉末+豆瓣酱，加水放入豆腐焖煮","水淀粉勾芡，出锅撒花椒粉"]
+      },
+      {
+        id:10,name:"土豆炖牛腩",cate:"肉类",
+        img:"https://p3-flow-image-sign.byteimg.com/tos-cn-i-a9rns2rl98/1d1691479045420899898990d0d43800~tplv-a9rns2rl98-image.image",
+        food:[{name:"牛腩",num:"500g",type:"肉类"},{name:"土豆胡萝卜",num:"各1个",type:"蔬菜"},{name:"八角葱姜",num:"少许",type:"调料"}],
+        step:["牛腩切块焯水，炒至表面焦黄加香料翻炒","加热水小火炖煮60分钟，放入土豆胡萝卜","继续炖煮20分钟，加盐收汁"]
+      },
+      {
+        id:11,name:"丝瓜鸡蛋汤",cate:"汤品",
+        img:"https://p3-flow-image-sign.byteimg.com/tos-cn-i-a9rns2rl98/038f224248484928884942d299980930~tplv-a9rns2rl98-image.image",
+        food:[{name:"丝瓜",num:"1根",type:"蔬菜"},{name:"鸡蛋",num:"2个",type:"肉类"},{name:"枸杞、盐",num:"少许",type:"调料"}],
+        step:["丝瓜去皮切滚刀块，清水煮沸下丝瓜煮软","淋入蛋液做成蛋花，加盐调味，点缀枸杞"]
+      },
+      {
+        id:12,name:"酸辣土豆丝",cate:"素菜",
+        img:"https://p3-flow-image-sign.byteimg.com/tos-cn-i-a9rns2rl98/7627988f442d40089489844492f22450~tplv-a9rns2rl98-image.image",
+        food:[{name:"土豆",num:"2个",type:"蔬菜"},{name:"干辣椒、白醋",num:"适量",type:"调料"}],
+        step:["土豆切丝清水反复淘洗去除淀粉","热油爆香干辣椒，大火爆炒土豆丝","出锅前淋白醋加盐翻炒10秒关火"]
+      }
+    ]
+
+    let aiGeneratedRecipe = null;
+    let collectList = JSON.parse(localStorage.getItem("recipeCollect")) || []
+    let cartList = JSON.parse(localStorage.getItem("recipeCart")) || []
+    let nowOpenItem = null
+    let selectCate = "all"
+    let showData = [...localData]
+
+    // 切换页面标签
+    function switchTab(tabName) {
+      document.querySelectorAll(".tab-content").forEach(el => el.classList.add("hidden"))
+      document.getElementById(`${tabName}Tab`).classList.remove("hidden")
+      if(tabName === "collect") renderCollect()
+      if(tabName === "cart") renderCart()
+      if(tabName === "buyList") renderBuyList()
+    }
+
+    // 渲染菜谱卡片通用方法
+    function render(list) {
+      const wrap = document.getElementById("recipeList")
+      wrap.innerHTML = ""
+      if(list.length === 0) {
+        wrap.innerHTML = `<div class="col-span-full text-center py-20 text-gray-400">暂无菜谱数据</div>`
+        return
+      }
+      list.forEach(item => {
+        const isCol = collectList.some(c => c.id === item.id)
+        const card = document.createElement("div")
+        card.className = "bg-white rounded-xl overflow-hidden card-shadow hover:shadow-lg transition"
+        card.innerHTML = `
+          <img src="${item.img || 'https://picsum.photos/id/1080/800/450'}" onclick='openModal(${JSON.stringify(item).replace(/"/g,"&quot;")})' class="w-full recipe-img cursor-pointer">
+          <div class="p-4">
+            <div class="flex justify-between items-center">
+              <h4 class="font-bold text-lg">${item.name}</h4>
+              <i onclick="event.stopPropagation();quickCollect(${JSON.stringify(item).replace(/"/g,"&quot;")})" class="fa fa-heart ${isCol?'text-red-400':'text-gray-300'} text-lg cursor-pointer"></i>
+            </div>
+            <span class="text-xs bg-sage/10 text-sage px-2 py-0.5 rounded mt-1 inline-block">${item.cate}</span>
+            <button onclick='openModal(${JSON.stringify(item).replace(/"/g,"&quot;")})' class="mt-3 w-full border border-sage text-sage rounded py-1.5 hover:bg-sage hover:text-white text-sm">查看做法</button>
+          </div>
+        `
+        wrap.appendChild(card)
+      })
+      showData = list
+    }
+
+    // 本地菜谱检索
+    function localSearch() {
+      const keyword = document.getElementById("searchInput").value.trim().toLowerCase()
+      let tempArr = [...localData]
+      if(selectCate !== "all") tempArr = tempArr.filter(v=>v.cate === selectCate)
+      if(keyword){
+        tempArr = tempArr.filter(item=>{
+          const nameMatch = item.name.toLowerCase().includes(keyword)
+          const foodMatch = item.food.some(f=>f.name.includes(keyword))
+          return nameMatch || foodMatch
+        })
+      }
+      render(tempArr)
+    }
+
+    // 分类筛选
+    function setCategory(cate) {
+      selectCate = cate
+      document.querySelectorAll(".cate-btn").forEach(btn=>{
+        btn.classList.remove("sage-gradient","text-white")
+        btn.classList.add("bg-gray-100")
+      })
+      event.target.classList.remove("bg-gray-100")
+      event.target.classList.add("sage-gradient","text-white")
+      localSearch()
+    }
+
+    // AI生成菜谱核心函数【对接Vercel proxy接口】
+    async function aiGenerateRecipe(){
+      const keyword = document.getElementById("searchInput").value.trim()
+      const tipDom = document.getElementById("aiLoadingTip")
+      if(!keyword){
+        alert("请输入需要查询的菜品名称");return;
+      }
+      tipDom.classList.remove("hidden")
+      const prompt = `你现在是专业厨师，根据菜品【${keyword}】，严格按照下面JSON格式返回内容，不要多余文字、不要解释。
+格式：
+{
+  "name":"菜名",
+  "cate":"分类（肉类/素菜/汤品三选一）",
+  "food":[{"name":"食材名称","num":"用量","type":"肉类/蔬菜/调料"}],
+  "step":["步骤1","步骤2","步骤3","步骤4"]
+}`
+      try {
+        const res = await fetch("/api/proxy",{
+          method:"POST",
+          headers:{
+            "Content-Type":"application/json"
+          },
+          body:JSON.stringify({
+            model:"qwen-turbo",
+            input:{
+              messages:[{"role":"user","content":prompt}]
+            },
+            parameters:{
+              result_format:"json"
+            }
+          })
+        })
+        const resData = await res.json()
+        const recipeObj = resData
+        aiGeneratedRecipe = recipeObj
+        render([recipeObj])
+      } catch (err) {
+        console.error(err)
+        alert("AI生成失败，网络异常")
+      } finally {
+        tipDom.classList.add("hidden")
+      }
+    }
+
+    // 弹窗打开关闭
+    function openModal(item) {
+      nowOpenItem = item
+      document.getElementById("modalName").innerText = item.name
+      document.getElementById("modalCate").innerText = item.cate
+      document.getElementById("modalImg").src = item.img || "https://picsum.photos/id/1080/800/450"
+      document.getElementById("modalFood").innerHTML = item.food.map(f=>`<li>• ${f.name}：${f.num}</li>`).join("")
+      document.getElementById("modalStep").innerHTML = item.step.map(s=>`<li>${s}</li>`).join("")
+      const heartIcon = document.querySelector("#collectBtn i")
+      const hasCol = collectList.some(c=>c.id === item.id)
+      heartIcon.className = hasCol ? "fa fa-heart text-red-400 text-xl" : "fa fa-heart-o text-gray-300 text-xl"
+      document.getElementById("detailModal").classList.remove("hidden")
+    }
+    function closeModal(){
+      document.getElementById("detailModal").classList.add("hidden")
+    }
+
+    // 收藏、购物车、采购清单原有逻辑全部保留
+    function toggleCollect(){
+      const idx = collectList.findIndex(c=>c.id === nowOpenItem.id)
+      idx > -1 ? collectList.splice(idx,1) : collectList.push({...nowOpenItem})
+      localStorage.setItem("recipeCollect",JSON.stringify(collectList))
+      openModal(nowOpenItem)
+      render(showData)
+    }
+    function quickCollect(item){
+      const idx = collectList.findIndex(c=>c.id === item.id)
+      idx > -1 ? collectList.splice(idx,1) : collectList.push({...item})
+      localStorage.setItem("recipeCollect",JSON.stringify(collectList))
+      render(showData)
+    }
+    function addCart(){
+      const exist = cartList.find(v=>v.id === nowOpenItem.id)
+      exist ? exist.num++ : cartList.push({id:nowOpenItem.id,num:1,info:nowOpenItem})
+      localStorage.setItem("recipeCart",JSON.stringify(cartList))
+      updateCartBadge()
+      alert("已加入点菜车")
+    }
+    function updateCartBadge(){
+      const total = cartList.reduce((sum,item)=>sum + item.num,0)
+      const badge = document.getElementById("cartBadge")
+      total>0 ? (badge.innerText=total,badge.classList.remove("hidden")) : badge.classList.add("hidden")
+    }
+    function renderCart(){
+      const wrap = document.getElementById("cartList")
+      if(cartList.length === 0){ wrap.innerHTML = '<div class="text-center py-20 text-gray-400">购物车空空如也</div>';return }
+      wrap.innerHTML = ""
+      cartList.forEach(item=>{
+        const info = item.info
+        const dom = document.createElement("div")
+        dom.className = "bg-white p-4 rounded-lg card-shadow flex items-center gap-4"
+        dom.innerHTML = `
+          <img src="${info.img||''}" class="w-20 h-14 rounded object-cover">
+          <div class="flex-1">${info.name}</div>
+          <div class="flex items-center gap-2">
+            <button onclick="changeCartNum('${item.id}',-1)" class="w-7 h-7 bg-gray-100 rounded">-</button>
+            <span>${item.num}</span>
+            <button onclick="changeCartNum('${item.id}',1)" class="w-7 h-7 bg-gray-100 rounded">+</button>
+            <button onclick="delCartItem('${item.id}')" class="text-red-400"><i class="fa fa-trash"></i></button>
+          </div>
+        `
+        wrap.appendChild(dom)
+      })
+    }
+    function changeCartNum(id,step){
+      const item = cartList.find(v=>v.id == id)
+      item.num += step
+      if(item.num <=0) delCartItem(id)
+      else { localStorage.setItem("recipeCart",JSON.stringify(cartList));renderCart();updateCartBadge() }
+    }
+    function delCartItem(id){
+      cartList = cartList.filter(v=>v.id != id)
+      localStorage.setItem("recipeCart",JSON.stringify(cartList))
+      renderCart();updateCartBadge()
+    }
+    function clearCart(){
+      cartList = []
+      localStorage.setItem("recipeCart",JSON.stringify(cartList))
+      renderCart();renderBuyList();updateCartBadge()
+    }
+    function renderCollect(){
+      const wrap = document.getElementById("collectList")
+      if(collectList.length === 0){ wrap.innerHTML = '<div class="col-span-full text-center py-20 text-gray-400">暂无收藏</div>';return }
+      wrap.innerHTML = ""
+      collectList.forEach(item=>{
+        const dom = document.createElement("div")
+        dom.className = "bg-white rounded-xl overflow-hidden card-shadow"
+        dom.innerHTML = `
+          <img src="${item.img||''}" onclick='openModal(${JSON.stringify(item).replace(/"/g,"&quot;")})' class="w-full recipe-img cursor-pointer">
+          <div class="p-4">
+            <h4 class="font-bold text-lg">${item.name}</h4>
+            <span class="text-xs bg-sage/10 text-sage px-2 py-0.5 rounded mt-1 inline-block">${item.cate}</span>
+            <div class="flex gap-2 mt-3">
+              <button onclick='openModal(${JSON.stringify(item).replace(/"/g,"&quot;")})' class="flex-1 py-1.5 border border-sage rounded text-sm">查看</button>
+              <button onclick='quickCollect(${JSON.stringify(item).replace(/"/g,"&quot;")})' class="flex-1 py-1.5 bg-red-100 text-red-400 rounded text-sm">取消收藏</button>
+            </div>
+          </div>
+        `
+        wrap.appendChild(dom)
+      })
+    }
+    function renderBuyList(){
+      const wrap = document.getElementById("buyListBox")
+      if(cartList.length === 0){ wrap.innerHTML = '<div class="col-span-3 text-center py-20 text-gray-400">选购菜品生成清单</div>';updateProgress(0);return }
+      const foodMap = {}
+      cartList.forEach(cartItem=>{
+        cartItem.info.food.forEach(fd=>{
+          const key = fd.name + fd.type
+          if(!foodMap[key]) foodMap[key] = {...fd,count:0,checked:false}
+          foodMap[key].count += cartItem.num
+        })
+      })
+      const group = {肉类:[],蔬菜:[],调料:[]}
+      Object.values(foodMap).forEach(f=>group[f.type]?.push(f))
+      wrap.innerHTML = ""
+      Object.keys(group).forEach(type=>{
+        const box = document.createElement("div")
+        box.className = "bg-white rounded-lg p-5 card-shadow"
+        let html = `<h4 class="font-semibold text-lg mb-4 text-sage">${type}食材</h4><div class="space-y-2">`
+        group[type].forEach(f=>{
+          html += `<label class="flex items-center gap-2"><input type="checkbox" class="buy-check" onchange="calcProgress()">${f.name} ×${f.count}份 单份：${f.num}</label>`
+        })
+        html += "</div>"
+        box.innerHTML = html
+        wrap.appendChild(box)
+      })
+      calcProgress()
+    }
+    function calcProgress(){
+      const all = document.querySelectorAll(".buy-check").length
+      const checked = document.querySelectorAll(".buy-check:checked").length
+      const p = all ===0 ? 0 : Math.round((checked/all)*100)
+      updateProgress(p)
+    }
+    function updateProgress(val){
+      document.getElementById("progressNum").innerText = val + "%"
+      document.getElementById("progressBar").style.width = val + "%"
+    }
+    function copyBuyList(){
+      let txt = "采购清单：\n"
+      document.querySelectorAll(".buy-check").forEach(cb=>{
+        txt += (cb.checked?"✅":"⬜") + cb.parentElement.textContent + "\n"
+      })
+      const ta = document.getElementById("copyText")
+      ta.value = txt
+      ta.select()
+      document.execCommand("copy")
+      alert("清单已复制")
+    }
+
+    // 页面加载：读取云端菜谱 + 本地菜谱合并渲染
+    window.onload = async () => {
+      let cloudRecipeArr = [];
+      try {
+        const res = await fetch("/api/getRecipes");
+        cloudRecipeArr = await res.json();
+      } catch (err) {
+        cloudRecipeArr = [];
+      }
+      const totalAllRecipe = [...localData, ...cloudRecipeArr];
+      render(totalAllRecipe);
+      updateCartBadge();
+    }
+  </script>
+</body>
+</html>
